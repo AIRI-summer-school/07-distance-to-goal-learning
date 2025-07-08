@@ -1,0 +1,6 @@
+gymnasium
+gymnasium_robotics
+gymnasium[other]
+
+moviepy
+imageio-ffmpeg
