@@ -32,3 +32,4 @@ class TerminateOnSuccessWrapper(gym.Wrapper):
         if info.get('success', False):
             terminated = True  # end episode when success achieved
         return obs, reward, terminated, truncated, info
+

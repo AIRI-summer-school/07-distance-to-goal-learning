@@ -44,16 +44,19 @@ class ActorCritic(nn.Module):
         value = self.value_net(state).squeeze(-1)  # shape (N,)
         return dist, value
 
-    def act(self, state):
+    def act(self, state, deterministic=False):
         """
-        Sample an action from the policy given a single state (numpy) input.
+        Select an action from the policy given a single state (numpy) input.
+        If deterministic=True, returns the mean action (no sampling).
+        If deterministic=False (default), samples from the policy distribution.
         Returns action (numpy array), log probability, and value.
         """
         state_t = torch.from_numpy(state).float().unsqueeze(0)
-        dist, value = self.forward(state_t)
-        action = dist.sample()
-        log_prob = dist.log_prob(action).sum(axis=-1)  # sum log_prob for multi-dim action
-        return action.squeeze(0).numpy(), log_prob.item(), value.item()
+        with torch.no_grad():                     # <-- инференс без автограда
+            dist, value = self.forward(state_t)
+            action = dist.mean if deterministic else dist.sample()
+            log_prob = dist.log_prob(action).sum(dim=-1)
+        return action.squeeze(0).cpu().numpy(), log_prob.item(), value.item()
 
     def evaluate_actions(self, states, actions):
         """
