@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal
+import wandb
+from tqdm import trange
 
 class ActorCritic(nn.Module):
     """
@@ -69,7 +71,7 @@ class ActorCritic(nn.Module):
         return log_probs, values, entropy
 
 class PPOAgent:
-    def __init__(self, state_dim, action_dim, lr=3e-4, gamma=0.99, lambd=0.95, clip_coef=0.2, vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5):
+    def __init__(self, state_dim, action_dim, lr=3e-4, gamma=0.99, lambd=0.95, clip_coef=0.2, vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, log_to_wandb: bool = True, wandb_name = "runs/stage1"):
         """
         PPO Agent containing policy network and optimizer, with training methods.
         """
@@ -79,10 +81,16 @@ class PPOAgent:
         self.vf_coef = vf_coef
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
+        self.log_to_wandb = log_to_wandb
         # Create actor-critic network and optimizer
         self.ac = ActorCritic(state_dim, action_dim)
         self.optimizer = optim.Adam(self.ac.parameters(), lr=lr)
 
+        if log_to_wandb:
+            self.run = wandb.init(
+                project="ppo_rl", name=wandb_name,
+            )
+            
     def collect_trajectory(self, env, timestep_limit, use_distance_shaping=False, distance_model=None):
         """
         Collect a trajectory of experiences by running the policy in the environment.
@@ -209,3 +217,61 @@ class PPOAgent:
                 self.optimizer.step()
         # Return losses for logging
         return pg_loss.item(), value_loss.item(), entropy_loss.item()
+
+
+    def train_ppo(
+        self,
+        env,
+        *,
+        num_episodes: int,
+        max_episode_steps: int,
+    ):
+        for episode in trange(1, num_episodes + 1, desc="Training", ncols=100):
+            traj = self.collect_trajectory(env, max_episode_steps)
+            pg_loss, v_loss, ent_loss = self.update(traj)
+
+            rewards, dones = traj["rewards"], traj["dones"]
+            ep_returns = np.add.reduceat(rewards, np.flatnonzero(np.r_[True, dones[:-1]]))
+            if ep_returns.size:
+                wandb.log({"charts/episodic_return": ep_returns.mean()},step=episode)
+            wandb.log( {
+                    "losses/policy_loss": pg_loss,
+                    "losses/value_loss": v_loss,
+                    "losses/entropy": ent_loss,
+                },
+                step=episode,
+            )
+
+
+    def evaluate_ppo(
+        self,
+        env,
+        *,
+        num_episodes: int = 100,
+        max_episode_steps: int | None = 2048,
+        deterministic: bool = True,
+    ): 
+        trajectories = []
+        returns = []
+        with torch.no_grad():
+            for ep in trange(num_episodes, desc="Evaluating", ncols=100):
+                state, _ = env.reset()
+                ep_return = 0.0
+                episode_traj = []
+                for _ in range(max_episode_steps):
+                    ball_x, ball_y = state[0], state[1]
+                    episode_traj.append((ball_x, ball_y))
+
+                    action, *_ = self.ac.act(state, deterministic=deterministic)
+                    state, reward, terminated, truncated, _ = env.step(action)
+                    ep_return += reward
+                    if terminated or truncated:
+                        break
+                trajectories.append(episode_traj)
+                returns.append(ep_return)
+
+        if self.log_to_wandb and wandb.run is not None:
+            wandb.log({"eval/episodic_return": np.mean(returns)})
+
+        print(f"Over {num_episodes} eval episodes, {np.count_nonzero(returns)} were successful ({100*np.mean(returns):.1f}%)")
+        return trajectories

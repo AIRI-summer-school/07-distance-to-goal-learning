@@ -4,3 +4,6 @@ gymnasium[other]
 
 moviepy
 imageio-ffmpeg
+
+nbformat
+wandb

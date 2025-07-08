@@ -166,6 +166,17 @@ class EnvBuilder:
             ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             folder = f"{folder}_{ts}"
         return folder
+    
+    def get_obs_act_dim(self):
+        """
+        Returns the observation and action space dimensions after wrapping.
+        Useful for defining policy and value networks.
+        """
+        temp_env = self.build()
+        obs_dim = temp_env.observation_space.shape[0]
+        act_dim = temp_env.action_space.shape[0]
+        temp_env.close()
+        return obs_dim, act_dim
 
     # Explicit constructor in case you prefer builder.build()
     def build(
