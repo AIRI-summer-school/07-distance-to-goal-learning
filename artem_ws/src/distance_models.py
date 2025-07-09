@@ -31,6 +31,11 @@ class BaseDistanceEstimator(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
     
+    def evaluate_from_data(self, data):
+        pass
+    def train_from_data(self, data):
+        pass
+
     def plot_distance_heatmap(self, env=None, source_point=None, xlim=None, ylim=None, grid_size=500, cmap="viridis", wall_alpha=0.35, epsilon=0.1):
         """Heat-map of model-predicted distances with MuJoCo walls overlaid."""
         source_point = self.start_point if source_point is None else source_point
@@ -143,7 +148,7 @@ class SupervisedDistanceEstimator(BaseDistanceEstimator):
         dataset_size = states_t.shape[0]
         eval_losses = []
         avg_train_loss = 0
-        for epoch in trange(epochs, desc=f"Training, t_loss={avg_train_loss:.2f}", ncols=100):
+        for epoch in trange(epochs, desc="Training", ncols=100):
             idx = torch.randperm(dataset_size)
             total_loss = 0
             n_batches = 0

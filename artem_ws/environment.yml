@@ -1,0 +1,45 @@
+name: artem_env
+channels:
+  - pytorch       #  ⇢ official PyTorch binaries
+  - nvidia        #  ⇢ only needed for GPU build
+  - conda-forge   #  ⇢ everything else
+dependencies:
+  # ------------------------------------------------------------------
+  # Core language + numerics
+  - python=3.12           # gymnasium & torch both support 3.12
+  - numpy>=1.24
+  # ------------------------------------------------------------------
+  # Gymnasium + MuJoCo physics
+  - gymnasium             # API
+  - mujoco-python         # physics engine
+  - glfw                  # OpenGL context for viewer
+  - glew                  # extension wrangler
+  - pillow                # image backend for Gym rendering
+  # ------------------------------------------------------------------
+  # Media / logging / notebooks
+  - moviepy
+  - imageio-ffmpeg
+  - nbformat
+  - wandb
+  - matplotlib        
+  - tqdm
+  # --- vision ---
+  - opencv          # or opencv-headless
+  # ——— Jupyter notebooks ———
+  - jupyterlab
+  # ------------------------------------------------------------------
+  # ----------  choose ONE of the two PyTorch blocks  ----------
+  # --- A. CPU-only build (works everywhere) ---
+  # - pytorch
+  # - torchvision
+  # - torchaudio
+  # - cpuonly               # marks CPU wheels
+  # --- B. CUDA build (comment-in if you want GPU) ---
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1   # requires NVIDIA driver ≥ 525.60
+  # ---------------------------------------------------------------
+  - pip                   # let conda manage pip itself
+  - pip:
+      - gymnasium-robotics   # robotics envs (PyPI-only)

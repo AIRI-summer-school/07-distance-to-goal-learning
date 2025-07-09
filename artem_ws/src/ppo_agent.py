@@ -5,6 +5,8 @@ import torch.optim as optim
 from torch.distributions import Normal
 import wandb
 from tqdm import trange
+from src.utils import trajectories_to_dataset
+
 
 class ActorCritic(nn.Module):
     """
@@ -275,5 +277,4 @@ class PPOAgent:
 
         print(f"Over {num_episodes} eval episodes, {np.count_nonzero(returns)} were successful ({100*np.mean(returns):.1f}%)")
         return trajectories
-    
     
