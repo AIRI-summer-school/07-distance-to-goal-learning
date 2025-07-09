@@ -216,4 +216,13 @@ class EnvBuilder:
 
         return env
 
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def make_vec_env(self, num_envs, seed=0, async_mode=True):
+        """
+        Return a vectorised env (either AsyncVectorEnv or SyncVectorEnv).
+        """
+        def _thunk(rank):
+            return lambda: self.build(seed=seed + rank)
+        env_cls = gym.vector.AsyncVectorEnv if async_mode else gym.vector.SyncVectorEnv
+        return env_cls([_thunk(i) for i in range(num_envs)])
 

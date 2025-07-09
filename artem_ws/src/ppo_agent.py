@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 import wandb
 from tqdm import trange
-from src.utils import trajectories_to_dataset
+
 
 
 class ActorCritic(nn.Module):
@@ -113,15 +113,15 @@ class PPOAgent:
             next_state, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             # If using distance-based reward shaping, adjust reward:contentReference[oaicite:0]{index=0}
-            if use_distance_shaping and distance_model is not None:
-                # Compute shaping reward using learned distance as potential
-                current_distance = distance_model.predict(state)
-                next_distance = 0.0
-                if not terminated:
-                    next_distance = distance_model.predict(next_state)
-                # Potential-based shaping: reward += (current_distance - next_distance)
-                # This gives a positive reward for decreasing the distance (moving closer to goal).
-                reward += (current_distance - next_distance)
+            # if use_distance_shaping and distance_model is not None:
+            #     # Compute shaping reward using learned distance as potential
+            #     current_distance = distance_model.predict(state)
+            #     next_distance = 0.0
+            #     if not terminated:
+            #         next_distance = distance_model.predict(next_state)
+            #     # Potential-based shaping: reward += (current_distance - next_distance)
+            #     # This gives a positive reward for decreasing the distance (moving closer to goal).
+            #     reward += (current_distance - next_distance)
             # Save transition
             states.append(state)
             actions.append(action)
@@ -244,6 +244,103 @@ class PPOAgent:
                 step=episode,
             )
 
+    # ── vectorised rollout ───────────────────────────────────────────────────
+    def collect_trajectory_vec(self, envs, horizon):
+        """
+        Collect horizon steps from all envs at once.
+        Shapes:
+            obs      (T, N, obs_dim)
+            actions  (T, N, act_dim)
+            rewards  (T, N)
+            dones    (T, N)
+            logp     (T, N)
+            values   (T, N)
+            next_val (N,)
+        """
+        obs_buf, act_buf, rew_buf, done_buf = [], [], [], []
+        logp_buf, val_buf = [], []
+
+        obs, _ = envs.reset()                # (N, obs_dim)
+        for _ in range(horizon):
+            obs_t = torch.as_tensor(obs, dtype=torch.float32)
+            with torch.no_grad():
+                dist, value = self.ac(obs_t)
+                action = dist.sample()
+                logp   = dist.log_prob(action).sum(dim=-1)
+
+            next_obs, reward, term, trunc, _ = envs.step(action.cpu().numpy())
+            done = np.logical_or(term, trunc)
+
+            obs_buf.append(obs)
+            act_buf.append(action.cpu().numpy())
+            rew_buf.append(reward)
+            done_buf.append(done)
+            logp_buf.append(logp.cpu().numpy())
+            val_buf.append(value.cpu().numpy())
+
+            obs = next_obs
+
+        # boot-strap values for GAE
+        with torch.no_grad():
+            next_val = self.ac(torch.as_tensor(obs, dtype=torch.float32))[1].cpu().numpy()
+
+        traj = {
+            "obs"       : np.asarray(obs_buf,   dtype=np.float32),
+            "actions"   : np.asarray(act_buf,   dtype=np.float32),
+            "rewards"   : np.asarray(rew_buf,   dtype=np.float32),
+            "dones"     : np.asarray(done_buf,  dtype=np.bool_),
+            "log_probs" : np.asarray(logp_buf,  dtype=np.float32),
+            "values"    : np.asarray(val_buf,   dtype=np.float32),
+            "next_value": np.asarray(next_val,  dtype=np.float32),
+        }
+        return traj
+
+    # ── main training loop ───────────────────────────────────────────────────
+    def train_ppo_vectorized(
+        self,
+        builder,
+        *,
+        num_envs: int      = 8,
+        horizon: int       = 128,     # steps per update
+        total_updates: int = 10_000,
+        seed: int          = 0,
+        async_mode: bool   = True,
+    ):
+        """
+        Vectorised PPO: identical API to your old train_ppo, but ~linear speed-up.
+        """
+        envs = builder.make_vec_env(num_envs, seed, async_mode)
+        global_step = 0
+
+        for update in trange(1, total_updates + 1, desc="Training", ncols=100):
+            traj = self.collect_trajectory_vec(envs, horizon)
+
+            # flatten (T, N, …) → (T*N, …) so the existing update() can be reused
+            T, N = traj["rewards"].shape
+            flat = {
+                "states"    : traj["obs"].reshape(T * N, -1),
+                "actions"   : traj["actions"].reshape(T * N, -1),
+                "rewards"   : traj["rewards"].reshape(T * N),
+                "dones"     : traj["dones"].reshape(T * N),
+                "log_probs" : traj["log_probs"].reshape(T * N),
+                "values"    : traj["values"].reshape(T * N),
+                "next_value": traj["next_value"].mean(),     # OK because we mask with dones
+            }
+
+            pg_loss, v_loss, ent_loss = self.update(flat)
+
+            global_step += horizon * num_envs
+            if self.log_to_wandb:
+                wandb.log(
+                    {
+                        "losses/policy_loss": pg_loss,
+                        "losses/value_loss" : v_loss,
+                        "losses/entropy"    : ent_loss,
+                    },
+                    step=global_step,
+                )
+
+        envs.close()
 
     def evaluate_ppo(
         self,
