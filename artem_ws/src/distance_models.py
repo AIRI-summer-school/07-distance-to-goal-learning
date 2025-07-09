@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import trange
+import matplotlib.pyplot as plt
+import numpy as np
 
 class BaseDistanceEstimator(nn.Module):
     """
@@ -31,6 +34,50 @@ class BaseDistanceEstimator(nn.Module):
         dist_pred = self.forward(state_t)
         return dist_pred.item()
 
+    def plot_distance_heatmap(self, source_point=(0.0, 0.0), grid_size=5000, xlim=(-2, 2), ylim=(-2, 2)):
+        """
+        Plots a heatmap of predicted distances from a fixed source point to a grid of target points.
+        """
+        x_src, y_src = source_point
+
+        # Create a 2D grid of target points
+        x_vals = np.linspace(*xlim, grid_size)
+        y_vals = np.linspace(*ylim, grid_size)
+        xx, yy = np.meshgrid(x_vals, y_vals)
+        target_points = np.stack([xx.ravel(), yy.ravel()], axis=1)
+
+        # Build model input: [x_src, y_src, x_tgt, y_tgt]
+        input_states = np.hstack([
+            np.full((target_points.shape[0], 2), [x_src, y_src]),
+            target_points
+        ])
+
+        # Predict distances
+        with torch.no_grad():
+            inputs = torch.tensor(input_states, dtype=torch.float32)
+            preds = self.forward(inputs).squeeze().numpy()
+
+        # Reshape predictions to grid for plotting
+        heatmap = preds.reshape(grid_size, grid_size)
+
+        # Plot
+        plt.figure(figsize=(6, 5))
+        plt.imshow(
+            heatmap,
+            origin='lower',
+            extent=(*xlim, *ylim),
+            cmap='viridis',
+            aspect='auto'
+        )
+        plt.colorbar(label="Predicted Distance")
+        plt.scatter(*source_point, color='red', label='Source', s=60, edgecolors='black')
+        plt.xlabel("Target X")
+        plt.ylabel("Target Y")
+        plt.title(f"Distance Heatmap from Source ({x_src:.1f}, {y_src:.1f})")
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
 class SupervisedDistanceEstimator(BaseDistanceEstimator):
     """
     Distance estimator trained with supervised labels (true distances from states to goal).
@@ -43,7 +90,8 @@ class SupervisedDistanceEstimator(BaseDistanceEstimator):
         dataset_size = states.shape[0]
         states_t = torch.tensor(states, dtype=torch.float32)
         targets_t = torch.tensor(distances, dtype=torch.float32).unsqueeze(1)
-        for epoch in range(epochs):
+        for epoch in trange(epochs, desc="Training distance model", ncols=100):
+
             # Shuffle indices for mini-batch training
             indices = torch.randperm(dataset_size)
             for start in range(0, dataset_size, batch_size):
@@ -79,7 +127,8 @@ class TDDistanceEstimator(BaseDistanceEstimator):
         dones = [t[2] for t in transitions]
         successes = [t[3] for t in transitions]
         N = states.shape[0]
-        for epoch in range(epochs):
+        for epoch in trange(epochs, desc="Training distance model", ncols=100):
+
             order = torch.randperm(N)
             for start in range(0, N, batch_size):
                 end = start + batch_size
@@ -137,3 +186,5 @@ class TDDistanceEstimator(BaseDistanceEstimator):
         valid_targets = torch.tensor([t for t, m in zip(all_targets, valid_mask) if m], dtype=torch.float32).unsqueeze(1)
         final_loss = self.loss_fn(self.forward(valid_states), valid_targets).item()
         return final_loss
+
+
