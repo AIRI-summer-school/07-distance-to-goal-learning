@@ -27,6 +27,10 @@ class BaseDistanceEstimator(nn.Module):
         self.start_point=(0., 0.)
         self.xlim=(-2, 2)
         self.ylim=(-2, 2)
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)                        # move the distance model itself
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
@@ -47,7 +51,7 @@ class BaseDistanceEstimator(nn.Module):
 
         # ── 2. model prediction ───────────────────────────────────────────────
         with torch.no_grad():
-            pred = self(torch.as_tensor(inp, dtype=torch.float32)).squeeze().cpu().numpy()
+            pred = self(torch.as_tensor(inp, device=self.device, dtype=torch.float32)).squeeze().cpu().numpy()
         heatmap = pred.reshape(grid_size, grid_size)
 
         # ── 3. plot heat-map ──────────────────────────────────────────────────
@@ -106,8 +110,8 @@ class SupervisedDistanceEstimator(BaseDistanceEstimator):
         save_path: str = "models/distance_model_sup.pth",
         verbose: bool = True,
     ):
-        states_t  = torch.tensor(dataset["eval_states"],    dtype=torch.float32)
-        targets_t = torch.tensor(dataset["eval_distances"], dtype=torch.float32).unsqueeze(1)
+        states_t  = torch.tensor(dataset["eval_states"],      device=self.device, dtype=torch.float32)
+        targets_t = torch.tensor(dataset["eval_distances"],   device=self.device, dtype=torch.float32).unsqueeze(1)
 
         n_samples  = states_t.shape[0]
         loss_sum   = 0.0
@@ -138,8 +142,8 @@ class SupervisedDistanceEstimator(BaseDistanceEstimator):
         eval_every: int = 5,
     ):
         self.start_point, self.xlim, self.ylim = self._get_borders(dataset)
-        states_t  = torch.tensor(dataset["train_states"],  dtype=torch.float32)
-        targets_t = torch.tensor(dataset["train_distances"], dtype=torch.float32).unsqueeze(1)
+        states_t  = torch.tensor(dataset["train_states"],      device=self.device, dtype=torch.float32)
+        targets_t = torch.tensor(dataset["train_distances"],   device=self.device, dtype=torch.float32).unsqueeze(1)
         dataset_size = states_t.shape[0]
         eval_losses = []
         avg_train_loss = 0

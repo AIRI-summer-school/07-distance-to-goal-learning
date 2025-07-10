@@ -203,10 +203,11 @@ class EnvBuilder:
         
         # --- wrappers --------------------------------------
         env = GoalObservationWrapper(env)
-        env = TerminateOnSuccessWrapper(env)
+        # env = TerminateOnSuccessWrapper(env)
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
-        env = RecordEpisodeStatistics(env)
-        env = DemonstrateWrapper(env)
+        env = DemonstrateWrapper(env)  # Apply BEFORE RecordEpisodeStatistics
+        env = RecordEpisodeStatistics(env) 
+
 
         # --- seeding -------------------------------------------------------
         if seed is not None:
@@ -216,4 +217,12 @@ class EnvBuilder:
 
         return env
 
-
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def make_vec_env(self, num_envs, seed=0, async_mode=True):
+        """
+        Return a vectorised env (either AsyncVectorEnv or SyncVectorEnv).
+        """
+        def _thunk(rank):
+            return lambda: self.build(seed=seed + rank)
+        env_cls = gym.vector.AsyncVectorEnv if async_mode else gym.vector.SyncVectorEnv
+        return env_cls([_thunk(i) for i in range(num_envs)])
