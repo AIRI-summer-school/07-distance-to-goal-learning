@@ -63,6 +63,13 @@ class ActorCritic(nn.Module):
 class PPOAgent:
     """Proximal Policy Optimisation with optional distance feature in the state."""
 
+
+    def save_model(self, path=None):
+        model_path = path or f"runs/ppo_{time.time()}.cleanrl_model"
+        torch.save(self.agent.state_dict(), model_path)
+        print(f"Model saved to {model_path}")
+
+
     def __init__(
         self,
         state_dim: int,
