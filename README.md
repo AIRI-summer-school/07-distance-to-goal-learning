@@ -62,16 +62,16 @@ Policy exploration enlarges the dataset; a better distance model in turn speeds 
 ---
 
 ## Results
-* **Reward shaping** (Sup-R, TD-R) delivers the earliest gains.  
-* **Observation only** helps but lags shaping.  
-* **Both signals** (Sup-B) achieve near-perfect success fastest.
+* **Reward shaping** (Sup-R, TD-R).  
+* **Observation only**.  
+* **Both signals** (Sup-B).
 
 | Variant | Avg. Return | Seeds Solved |
 |---------|------------:|-------------:|
 | PPO Baseline | 37.46 ± 3.4 | 52 / 100 |
 | Sup-R | 168.43 ± 21.89 | 52 / 100 |
 | Sup-O | 112.45 ± 12.81 | 31 / 100 |
-| **Sup-B** | **206.67 ± 11.1** | **66 / 100** |
+| Sup-B | 38.67 ± 15.1 | 50 / 100 |
 | TD-R | — | — |
 | TD-O | — | — |
 | TD-B | — | — |
